@@ -1,0 +1,380 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "",
+	"Metadata": {
+
+	},
+	"Parameters": {
+		"nvvpccidr": {
+			"Description": "Choose CIDR for VPC",
+			"Type": "String",
+			"Default": "192.168.0.0/16"
+		},
+		"subnet1cidr": {
+			"Description": "Choose CIDR for SUBNet1",
+			"Type": "String",
+			"Default": "192.168.1.0/24"
+
+		},
+		"subnet2cidr": {
+			"Description": "Choose CIDR for SUBNet2",
+			"Type": "String",
+			"Default": "192.168.2.0/24"
+
+		},
+
+		"Subnet1AZs": {
+			"Description": "Choose AZ for Subnet1",
+			"Type": "AWS::EC2::AvailabilityZone::Name"
+		},
+		"Subnet2AZs": {
+			"Description": "Choose AZ for Subnet2",
+			"Type": "AWS::EC2::AvailabilityZone::Name"
+		},
+
+		"Key": {
+			"Description": "Choose Key Name",
+			"Type": "AWS::EC2::KeyPair::KeyName"
+		},
+		"InstanceType": {
+			"Description": "Choose Instance Type",
+			"Type": "String",
+			"Default": "t2.micro",
+			"AllowedValues": ["t2.micro", "t2.nano", "t2.small"]
+
+		},
+		"ChooseAmi": {
+			"Type": "String",
+			"Default": "ami-0d5eff06f840b45e9"
+		}
+	},
+	"Mappings": {
+
+	},
+	"Conditions": {
+
+	},
+	"Resources": {
+		"cloudVPC": {
+			"Type": "AWS::EC2::VPC",
+			"Properties": {
+				"EnableDnsHostnames": true,
+				"EnableDnsSupport": true,
+				"CidrBlock": {
+					"Ref": "nvvpccidr"
+				},
+				"Tags": [{
+					"Key": "Name",
+					"Value": "cloudVPC"
+				}]
+			}
+		},
+		"sub1": {
+			"Type": "AWS::EC2::Subnet",
+			"Properties": {
+				"MapPublicIpOnLaunch": true,
+				"AvailabilityZone": {
+					"Ref": "Subnet1AZs"
+				},
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"CidrBlock": {
+					"Ref": "subnet1cidr"
+				},
+				"Tags": [{
+					"Key": "name",
+					"Value": "sub1"
+				}]
+			}
+		},
+		"sub2": {
+			"Type": "AWS::EC2::Subnet",
+			"Properties": {
+				"MapPublicIpOnLaunch": true,
+				"AvailabilityZone": {
+					"Ref": "Subnet2AZs"
+				},
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"CidrBlock": {
+					"Ref": "subnet2cidr"
+				},
+				"Tags": [{
+					"Key": "name",
+					"Value": "sub2"
+				}]
+			}
+		},
+		"cloudigw": {
+			"Type": "AWS::EC2::InternetGateway",
+			"Properties": {
+				"Tags": [{
+					"Key": "name",
+					"Value": "cloudvpcigw"
+				}]
+			}
+		},
+		"AttachGateway": {
+			"Type": "AWS::EC2::VPCGatewayAttachment",
+			"Properties": {
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"InternetGatewayId": {
+					"Ref": "cloudigw"
+				}
+
+			}
+		},
+		"PublicRT": {
+			"Type": "AWS::EC2::RouteTable",
+			"Properties": {
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"Tags": [{
+					"Key": "Name",
+					"Value": "PublicRT"
+				}]
+			}
+		},
+		"routeigw": {
+			"Type": "AWS::EC2::Route",
+			"Properties": {
+				"RouteTableId": {
+					"Ref": "PublicRT"
+				},
+				"DestinationCidrBlock": "0.0.0.0/0",
+				"GatewayId": {
+					"Ref": "cloudigw"
+				}
+			}
+		},
+		"sub1routeTableAssoc": {
+			"Type": "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties": {
+				"SubnetId": {
+					"Ref": "sub1"
+				},
+				"RouteTableId": {
+					"Ref": "PublicRT"
+				}
+			}
+		},
+		"sub2routeTableAssoc": {
+			"Type": "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties": {
+				"SubnetId": {
+					"Ref": "sub2"
+				},
+				"RouteTableId": {
+					"Ref": "PublicRT"
+				}
+			}
+		},
+		"WebserverSG": {
+			"Type": "AWS::EC2::SecurityGroup",
+			"Properties": {
+				"GroupName": "WebserverSG",
+				"GroupDescription": "SG for ssh http traffic",
+				"SecurityGroupIngress": [{
+						"IpProtocol": "tcp",
+						"FromPort": "80",
+						"ToPort": "80",
+						"CidrIp": "0.0.0.0/0"
+					},
+					{
+						"IpProtocol": "tcp",
+						"FromPort": "22",
+						"ToPort": "22",
+						"CidrIp": "0.0.0.0/0"
+					},
+					{
+						"IpProtocol": "tcp",
+						"FromPort": "443",
+						"ToPort": "443",
+						"CidrIp": "0.0.0.0/0"
+					}
+				],
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"Tags": [{
+					"Key": "Name",
+					"Value": "sgforweb"
+				}]
+			}
+		},
+		"ELBSG": {
+			"Type": "AWS::EC2::SecurityGroup",
+			"Properties": {
+				"GroupName": "ELBSG",
+				"GroupDescription": "SG for ELB traffic",
+				"SecurityGroupIngress": [{
+						"IpProtocol": "tcp",
+						"FromPort": "80",
+						"ToPort": "80",
+						"CidrIp": "0.0.0.0/0"
+					},
+					{
+						"IpProtocol": "tcp",
+						"FromPort": "443",
+						"ToPort": "443",
+						"CidrIp": "0.0.0.0/0"
+					}
+				],
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"Tags": [{
+					"Key": "Name",
+					"Value": "ELBSG"
+				}]
+			}
+		},
+		"Webserver1": {
+			"Type": "AWS::EC2::Instance",
+			"Properties": {
+				"KeyName": {
+					"Ref": "Key"
+				},
+				"SubnetId": {
+					"Ref": "sub1"
+				},
+				"ImageId": {
+					"Ref": "ChooseAmi"
+				},
+				"InstanceType": {
+					"Ref": "InstanceType"
+				},
+				"Monitoring": "false",
+				"SecurityGroupIds": [{
+					"Ref": "WebserverSG"
+				}],
+				"Tags": [{
+					"Key": "Name",
+					"Value": "Webserver 1"
+				}],
+				"UserData": {
+					"Fn::Base64": {
+						"Fn::Join": [
+							"",
+							[
+								"#!/bin/bash -ex \n",
+								"yum install httpd git -y \n",
+								"systemctl enable httpd \n",
+								"systemctl start httpd \n",
+								"git clone https://github.com/keyspaceits/project-html-blue-website.git /var/www/html"
+							]
+						]
+					}
+				}
+			}
+		},
+		"Webserver2": {
+			"Type": "AWS::EC2::Instance",
+			"Properties": {
+				"KeyName": {
+					"Ref": "Key"
+				},
+				"SubnetId": {
+					"Ref": "sub2"
+				},
+				"ImageId": {
+					"Ref": "ChooseAmi"
+				},
+				"InstanceType": {
+					"Ref": "InstanceType"
+				},
+				"Monitoring": "false",
+				"SecurityGroupIds": [{
+					"Ref": "WebserverSG"
+				}],
+				"Tags": [{
+					"Key": "Name",
+					"Value": "Webserver 2"
+				}],
+				"UserData": {
+					"Fn::Base64": {
+						"Fn::Join": [
+							"",
+							[
+								"#!/bin/bash -ex \n",
+								"yum install httpd git -y \n",
+								"systemctl enable httpd \n",
+								"systemctl start httpd \n",
+								"git clone https://github.com/keyspaceits/sampleweb.git /var/www/html"
+							]
+						]
+					}
+				}
+			}
+		},
+		"ALB": {
+			"Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+			"Properties": {
+				"SecurityGroups": [{
+					"Ref": "ELBSG"
+				}],
+				"Subnets": [{
+					"Ref": "sub1"
+				}, {
+					"Ref": "sub2"
+				}],
+				"Tags": [{
+					"Key": "Name",
+					"Value": "ALB"
+				}]
+			}
+		},
+		"ALBTargetGroup": {
+			"Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+			"Properties": {
+				"HealthCheckIntervalSeconds": 10,
+				"HealthCheckTimeoutSeconds": 5,
+				"HealthyThresholdCount": 2,
+				"Port": 80,
+				"Protocol": "HTTP",
+				"UnhealthyThresholdCount": 5,
+				"VpcId": {
+					"Ref": "cloudVPC"
+				},
+				"Targets": [{
+						"Id": {
+							"Ref": "Webserver1"
+						},
+						"Port": 80
+					},
+					{
+						"Id": {
+							"Ref": "Webserver2"
+						},
+						"Port": 80
+					}
+				]
+			}
+		},
+		"ALBListener": {
+			"Type": "AWS::ElasticLoadBalancingV2::Listener",
+			"Properties": {
+				"DefaultActions": [{
+					"Type": "forward",
+					"TargetGroupArn": {
+						"Ref": "ALBTargetGroup"
+					}
+				}],
+				"LoadBalancerArn": {
+					"Ref": "ALB"
+				},
+				"Port": "80",
+				"Protocol": "HTTP"
+			}
+		}
+	},
+
+	"Outputs": {
+
+	}
+}
